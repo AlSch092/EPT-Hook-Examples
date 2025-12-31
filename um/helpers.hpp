@@ -145,54 +145,11 @@ typedef struct _MYPEB
 	PVOID ProcessWindowStation;
 } MYPEB, * PMYPEB;
 
-/*
-	GetLoadedModules - returns a vector<MODULE_DATA>*  representing a set of loaded modules in the current process
-	returns nullptr on failure
-*/
-inline std::vector<MODULE_DATA> GetLoadedModules()
-{
-
-#ifdef _M_IX86
-	MYPEB* peb = (MYPEB*)__readfsdword(0x30);
-#else
-	MYPEB* peb = (MYPEB*)__readgsqword(0x60);
-#endif
-
-	uintptr_t kernel32Base = 0;
-
-	LIST_ENTRY* current_record = NULL;
-	LIST_ENTRY* start = &(peb->Ldr->InLoadOrderModuleList);
-
-	current_record = start->Flink;
-
-	std::vector<MODULE_DATA> moduleList;
-
-	while (true)
-	{
-		MY_LDR_DATA_TABLE_ENTRY* module_entry = (MY_LDR_DATA_TABLE_ENTRY*)CONTAINING_RECORD(current_record, MY_LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
-		MODULE_DATA module;
-
-		module.nameWithPath = std::wstring(module_entry->FullDllName.Buffer);
-		module.baseName = std::wstring(module_entry->BaseDllName.Buffer);
-
-		module.hModule = (HMODULE)module_entry->DllBase;
-		module.dllInfo.lpBaseOfDll = module_entry->DllBase;
-		module.dllInfo.SizeOfImage = module_entry->SizeOfImage;
-		moduleList.push_back(module);
-
-		current_record = current_record->Flink;
-
-		if (current_record == start)
-		{
-			break;
-		}
-	}
-
-	return moduleList;
-}
-
 inline int GetStrLength(__in const LPSTR str)
 {
+	if (str == nullptr)
+		return 0;
+
 	int len = 0;
 	while (true)
 	{
@@ -207,6 +164,9 @@ inline int GetStrLength(__in const LPSTR str)
 
 inline int GetStrLengthW(__in const LPWSTR str)
 {
+	if (str == nullptr)
+		return 0;
+
 	int len = 0;
 	while (true)
 	{
@@ -243,12 +203,38 @@ inline bool StrCmp(__in const char* str1, __in const char* str2)
 
 inline void _memcpy(__inout void* dest, __in const void* src, __in size_t size)
 {
+	if (dest == nullptr || src == nullptr || size == 0)
+		return;
+
 	byte* byteDest = (byte*)dest;
 	byte* byteSrc = (byte*)src;
 	for (size_t i = 0; i < size; i++)
 	{
 		byteDest[i] = byteSrc[i];
 	}
+}
+
+
+/*
+	API-less conversion from multibyte string to wide char string
+	Assumes zero other APIs are available, and only limited space is given
+	** Not recommended for general use -> we are only using it for converting DLL names in _GetProcAddress **
+*/
+inline wchar_t* mbtowc(const char* mbstr)
+{
+	if (mbstr == nullptr)
+		return nullptr;
+
+	int len = GetStrLength((LPSTR)mbstr);
+
+	wchar_t wstr[256]{ 0 };
+
+	for (int i = 0; i < len; i++) //will only work for english ascii, but shouldnt be a problem for the use of dll names
+	{
+		wstr[i] = (wchar_t)mbstr[i];
+	}
+
+	return wstr;
 }
 
 /*
@@ -258,6 +244,9 @@ inline void _memcpy(__inout void* dest, __in const void* src, __in size_t size)
 */
 inline HMODULE _GetModuleHandle(__in const LPWSTR mod)
 {
+	if (mod == nullptr)
+		return (HMODULE)NULL;
+
 #ifdef _M_IX86
 	MYPEB* peb = (MYPEB*)__readfsdword(0x30);
 #else
@@ -277,7 +266,7 @@ inline HMODULE _GetModuleHandle(__in const LPWSTR mod)
 	{
 		MY_LDR_DATA_TABLE_ENTRY* module_entry = (MY_LDR_DATA_TABLE_ENTRY*)CONTAINING_RECORD(current_record, MY_LDR_DATA_TABLE_ENTRY, InLoadOrderLinks);
 
-		for(int i = 0; i < modLen; i++)
+		for (int i = 0; i < modLen; i++)
 		{
 			if (mod[i] != module_entry->BaseDllName.Buffer[i])
 				break;
@@ -300,29 +289,8 @@ inline HMODULE _GetModuleHandle(__in const LPWSTR mod)
 }
 
 /*
-	API-less conversion from multibyte string to wide char string
-	Assumes zero other APIs are available, and only limited space is given
-*/
-inline wchar_t* mbtowc(const char* mbstr)
-{
-	if (mbstr == nullptr)
-		return nullptr;
-
-	int len = GetStrLength((LPSTR)mbstr);
-
-	wchar_t wstr[256]{ 0 };
-
-	for (int i = 0; i < len; i++) //will only work for english ascii, but shouldnt be a problem for the use of dll names
-	{
-		wstr[i] = (wchar_t)mbstr[i];
-	}
-
-	return wstr;
-}
-
-/*
 	_GetProcAddress - Attempt to retrieve address of function `lpFuncName` from `Module`
-    Used for dynamic API lookups in scenarios where we don't know the address of GetProcAddress or any other info beforehand
+	Used for dynamic API lookups in scenarios where we don't know the address of GetProcAddress or any other info beforehand
 	For example, we can use this in EPT hooks where a page allocated in Process A becomes the new code page for Process B, and we need to use WINAPIs
 	... We cannot just call GetProcAddress because of relocations/ASLR/offsets being different in Process B
 */
@@ -332,14 +300,14 @@ inline FARPROC _GetProcAddress(__in const wchar_t* ModuleName, __in const char* 
 		return nullptr;
 
 	HMODULE hMod = _GetModuleHandle((const LPWSTR)ModuleName);
-	
+
 	if (!hMod)
 		return nullptr;
 
 	auto base = reinterpret_cast<uint8_t*>(hMod);
 
 	auto dos = reinterpret_cast<PIMAGE_DOS_HEADER>(base);
-	
+
 	if (dos->e_magic != IMAGE_DOS_SIGNATURE)
 		return nullptr;
 
@@ -349,7 +317,7 @@ inline FARPROC _GetProcAddress(__in const wchar_t* ModuleName, __in const char* 
 		return nullptr;
 
 	auto& dir = nt->OptionalHeader.DataDirectory[IMAGE_DIRECTORY_ENTRY_EXPORT];
-	
+
 	if (!dir.VirtualAddress || !dir.Size)
 		return nullptr;
 
