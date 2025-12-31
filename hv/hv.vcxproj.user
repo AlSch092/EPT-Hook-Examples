@@ -1,0 +1,12 @@
+﻿<?xml version="1.0" encoding="utf-8"?>
+<Project ToolsVersion="Current" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
+  <PropertyGroup>
+    <ShowAllFiles>true</ShowAllFiles>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|x64'">
+    <TestCertificate>CN="WDKTestCert Pellow,134108295575674426" | EDF5E876E92C4ECD2C4042525113FC4093AB5CE1</TestCertificate>
+  </PropertyGroup>
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|x64'">
+    <TestCertificate>CN="WDKTestCert Pellow,134108295641237974" | 4D77F2FC9B46A6E30D6CF3EA887AD17DE561EEE6</TestCertificate>
+  </PropertyGroup>
+</Project>
