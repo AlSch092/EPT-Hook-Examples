@@ -1,6 +1,6 @@
 /*
 	Uses the "hv" hypervisor project to install EPT hooks on pages in other processes. Thank you for https://github.com/jonomango/hv !
-	This example demonstrates EPT hooking (cross-process redirected execution) and tracepoints 
+	This example demonstrates EPT hooking (cross-process redirected execution) and tracepoints
 	By AlSch092 @ Github
 */
 #include "hv.h"
@@ -22,12 +22,12 @@ struct ept_hook
 #pragma section(".mycode", execute, read)
 __declspec(code_seg(".mycode"))
 /*
-    This func will be executed in a different process via EPT hooking
+	This func will be executed in a different process via EPT hooking
 */
 void TestFunc()
 {
-	byte msg_bytes[] = {0x48,0x65,0x6C,0x6C,0x6F,0x20,0x66,0x72,0x6F,0x6D,0x20,0x68,0x6F,0x6F,0x6B,0x65,0x64,0x20,0x66,0x75,0x6E,0x63,0x74,0x69,0x6F,0x6E,0x21,0x0A, 0x00};
-	
+	byte msg_bytes[] = { 0x48,0x65,0x6C,0x6C,0x6F,0x20,0x66,0x72,0x6F,0x6D,0x20,0x68,0x6F,0x6F,0x6B,0x65,0x64,0x20,0x66,0x75,0x6E,0x63,0x74,0x69,0x6F,0x6E,0x21,0x0A, 0x00 };
+
 	// puts example -> easy to see in console output
 	byte module_name[] = { 'u', 0x00, 'c', 0x00, 'r',0x00, 't', 0x00, 'b', 0x00, 'a', 0x00,'s', 0x00,'e', 0x00, '.',0x00, 'd', 0x00,'l', 0x00, 'l', 0x00, 0x00 };
 	byte func_name[] = { 'p', 'u', 't', 's', 0x00 };
@@ -62,20 +62,21 @@ void TestFunc()
 /*
 	Hooks an EPT entry to redirect execution from target_address in target_processId to hook_address in the current process
 	Fills the member hook_info.hook_address with an allocated page if it was NULL beforehand, you should then memcpy your hook code into that page
-    after this func returns
+	after this func returns
 	...Fills members hooked_phys_frame, target_phys_frame, and hook_address
 */
 bool hook_ept(ept_hook& hook_info)
 {
 	hook_info.hooked_phys_frame = 0;
 
-	if (!hv::is_hv_running()) {
+	if (!hv::is_hv_running())
+	{
 		printf("HV not running.\n");
 		return false;
 	}
 
 	uintptr_t cr3 = hv::query_process_cr3(hook_info.target_processId);
-	
+
 	printf("Target CR3: 0x%I64X\n", cr3);
 
 	uintptr_t gpa = hv::get_physical_address(cr3, (const void*)hook_info.target_address);
@@ -130,7 +131,7 @@ bool hook_ept(ept_hook& hook_info)
 
 	uintptr_t new_gpa = hv::get_physical_address(cr3, (const void*)hook_info.hook_address);
 
-	if(!new_gpa)
+	if (!new_gpa)
 	{
 		printf("[ERROR] Failed to get physical address of hook page!\n");
 		return false;
@@ -140,11 +141,11 @@ bool hook_ept(ept_hook& hook_info)
 
 	printf("Hook page physical addr: %llX, frame %llX\n", new_gpa, new_gfn);
 
-	hv::for_each_cpu([&](uint32_t) 
-	{
-		if (!hv::install_ept_hook(gfn, new_gfn))
-			printf("Failed to install EPT hook!\n");
-    });
+	hv::for_each_cpu([&](uint32_t)
+		{
+			if (!hv::install_ept_hook(gfn, new_gfn))
+				printf("Failed to install EPT hook!\n");
+		});
 
 	hook_info.target_phys_frame = gfn;
 	hook_info.hooked_phys_frame = new_gfn;
@@ -154,25 +155,25 @@ bool hook_ept(ept_hook& hook_info)
 
 void unhook_ept(ept_hook& hook_info)
 {
-	hv::for_each_cpu([&](uint32_t) 
-	{
-		hv::remove_ept_hook(hook_info.target_phys_frame);
-    });
+	hv::for_each_cpu([&](uint32_t)
+		{
+			hv::remove_ept_hook(hook_info.target_phys_frame);
+		});
 
-	if(hook_info.hook_address)
-   	    if(!VirtualFree((LPVOID)hook_info.hook_address, 0, MEM_RELEASE))
+	if (hook_info.hook_address)
+		if (!VirtualFree((LPVOID)hook_info.hook_address, 0, MEM_RELEASE))
 			printf("[WARNING - unhook_ept] Failed to free hook page memory: %d\n", GetLastError());
 
 	hook_info.is_hooked = false;
 }
 
 
-bool example_hook_ept(__in const DWORD target_pid, __in const uintptr_t src_addr)
+ept_hook example_hook_ept(__in const DWORD target_pid, __in const uintptr_t src_addr)
 {
 	if (target_pid == 0 || src_addr == NULL)
 	{
 		printf("One or more parameters were NULL @ example_hook_ept\n");
-		return false;
+		return {};
 	}
 
 	ept_hook hook_info = { 0 };
@@ -184,89 +185,91 @@ bool example_hook_ept(__in const DWORD target_pid, __in const uintptr_t src_addr
 	if (!target_cr3)
 	{
 		printf("[WARNING] Failed to get target process CR3!\n");
-		system("pause");
-		return false;
+		return {};
 	}
 
 	if (!hook_ept(hook_info))
 	{
 		printf("[WARNING] Failed to hook EPT of process %d at address %llX!\n", target_pid, src_addr);
-		system("pause");
-		return false;
+		return {};
 	}
 
 	if (!hook_info.hook_address)
 	{
 		printf("[WARNING] hook_info.hook_address was 0!\n");
-		system("pause");
-		return false;
+		return {};
 	}
 
 	//after our new page memory is allocated, we memcpy our hook bytes into it before it's called
 	memcpy((void*)(hook_info.hook_address), (const void*)TestFunc, 0x1FA);
 	printf("hook_info.hook_address: %llX\n", hook_info.hook_address);
 
-	FILE* file = nullptr;
-	fopen_s(&file, "hvlog.txt", "a");
-
-	if (file == NULL) 
-	{
-		printf("[WARNING] File was NULL!\n");
-		return -1;
-	}
-
-	while (!GetAsyncKeyState(VK_RETURN)) 
-	{
-		// flush the logs
-		uint32_t count = 512;
-		hv::logger_msg msgs[512];
-		hv::flush_logs(count, msgs);
-
-		// print the logs
-		for (uint32_t i = 0; i < count; ++i) {
-			printf("[%I64u][CPU=%u] %s\n", msgs[i].id, msgs[i].aux, msgs[i].data);
-			fprintf(file, "[%I64u][CPU=%u] %s\n", msgs[i].id, msgs[i].aux, msgs[i].data);
-		}
-
-		fflush(file);
-		Sleep(1);
-	}
-
-	fclose(file);
-	unhook_ept(hook_info);
-	printf("Unhooked EPT...\n");
-	return true;
+	return hook_info;
 }
 
-bool example_tracepoint(__in const DWORD target_pid, __in const uintptr_t src_addr)
+bool add_monitored_mem_range(__in const DWORD pid, __in const uintptr_t guest_virtual_addr, __in const int size, __in const uint8_t access_type)
 {
-	if (target_pid == 0 || src_addr == NULL)
+	if (pid == 0 || guest_virtual_addr == NULL || size <= 0)
 	{
-		printf("One or more parameters were NULL @ example_tracepoint\n");
+		printf("One or more parameters were NULL/invalid @ add_monitored_mem_range\n");
 		return false;
 	}
 
-	uintptr_t target_cr3 = hv::query_process_cr3(target_pid);
+	uintptr_t target_cr3 = hv::query_process_cr3(pid);
 
 	if (!target_cr3)
 	{
-		printf("[WARNING] Failed to get target process CR3 @ example_tracepoint!\n");
+		printf("[WARNING] Failed to get target process CR3!\n");
 		system("pause");
 		return false;
 	}
 
-	uintptr_t phys_addr = hv::get_physical_address(target_cr3, (const void*)src_addr);
+	uintptr_t gpa = hv::get_physical_address(target_cr3, (const void*)guest_virtual_addr);
 
-	hv::for_each_cpu([&](uint32_t)
+	if (!gpa)
 	{
-		if (phys_addr)
-			hv::set_execute_bit_pfn(get_guest_pfn(phys_addr), false); //tracepoint example - turn off execute bit in page -> force EPT violation to print registers
-		else
-		{
-			printf("[WARNING] Failed to get physical address of target/original page!\n");
-			return;
-		}
-	});
+		printf("[ERROR] Failed to get physical address of target/original page!\n");
+		return false;
+	}
+
+	hv::for_each_cpu([gpa, size, access_type](uint32_t) {
+		hv::install_mmr(gpa, size, access_type); //mmr_memory_mode_x
+		});
+
+	printf("Added monitored memory range at GPA: %llX, size: %d, access type: %d\n", gpa, size, access_type);
+}
+
+int main(int argc, char** argv)
+{
+	if (!hv::is_hv_running())
+	{
+		printf("HV not running.\n");
+		return 0;
+	}
+
+	DWORD target_pid = 17380; //process ID of TestEPTTarget.exe (other project in solution)
+	uintptr_t src_addr = 0x7FF693BEA000; //virtual address in target_pid to hook -> in this case, it's the address of `MessageBoxTest` in TestEPTTarget.exe (other project in solution)
+
+	if (argc > 1)
+	{
+		target_pid = atoi(argv[1]);
+		src_addr = strtoull(argv[2], nullptr, 16);
+	}
+
+	bool monitoring_enabled = true; //mmr example to log execution access -> very naice for tracing/debugging live execution in a process
+	bool ept_hooking_enabled = false;
+	ept_hook hook_info;
+
+	if (!add_monitored_mem_range(target_pid, src_addr, 0x1000, 4))
+	{
+		printf("Failed to add to mmr, check params for NULL values.\n");
+		return -1;
+	}
+
+	if (ept_hooking_enabled)
+	{
+		hook_info = example_hook_ept(target_pid, src_addr); // ept hook example -> changes 
+	}
 
 	FILE* file = nullptr;
 	fopen_s(&file, "hvlog.txt", "a");
@@ -277,7 +280,7 @@ bool example_tracepoint(__in const DWORD target_pid, __in const uintptr_t src_ad
 		return false;
 	}
 
-	while (!GetAsyncKeyState(VK_RETURN))
+	while (!GetAsyncKeyState(VK_F1))
 	{
 		// flush the logs
 		uint32_t count = 512;
@@ -285,7 +288,8 @@ bool example_tracepoint(__in const DWORD target_pid, __in const uintptr_t src_ad
 		hv::flush_logs(count, msgs);
 
 		// print the logs
-		for (uint32_t i = 0; i < count; ++i) {
+		for (uint32_t i = 0; i < count; ++i)
+		{
 			printf("[%I64u][CPU=%u] %s\n", msgs[i].id, msgs[i].aux, msgs[i].data);
 			fprintf(file, "[%I64u][CPU=%u] %s\n", msgs[i].id, msgs[i].aux, msgs[i].data);
 		}
@@ -296,49 +300,19 @@ bool example_tracepoint(__in const DWORD target_pid, __in const uintptr_t src_ad
 
 	fclose(file);
 
-	printf("Restoring execute permissions on page...\n");
-
-	hv::for_each_cpu([&](uint32_t)
-		{
-			if (phys_addr)
-				hv::set_execute_bit_pfn(get_guest_pfn(phys_addr), true); //maybe needs to go inside driver to re-arm immediately after hitting violation
-			else
+	if (monitoring_enabled)
+	{
+		hv::for_each_cpu([](uint32_t)
 			{
-				printf("[WARNING] Failed to get physical address of target/original page!\n");
-				return;
-			}
-		});
-
-	return true;
-}
-
-int main(int argc, char** argv) 
-{
-	if (!hv::is_hv_running()) 
-	{
-		printf("HV not running.\n");
-		return 0;
+				hv::remove_all_mmrs();
+			});
 	}
 
-	DWORD target_pid = 14596; //process ID of TestEPTTarget.exe (other project in solution)
-	uintptr_t src_addr = 0x7FF64933A000; //virtual address in target_pid to hook -> in this case, it's the address of `MessageBoxTest` in TestEPTTarget.exe (other project in solution)
-
-	if (argc > 1)
+	if (ept_hooking_enabled && hook_info.is_hooked)
 	{
-		target_pid = atoi(argv[1]);
-		src_addr = strtoull(argv[2], nullptr, 16);
+		unhook_ept(hook_info);
+		printf("Unhooked EPT...\n");
 	}
-
-	//not recommended to run both these examples at once, pick one only
-
-	example_hook_ept(target_pid, src_addr); // ept hook example -> changes 
-
-	//tracepoint via removing execute bit on physical frame mapped from `src_addr` VA in `target_pid`
-	//example_tracepoint(target_pid, src_addr); //...uses a modified 'hv' driver which implements a hypercall to toggle the execute bit on a physical frame
-
-	hv::for_each_cpu([](uint32_t) {
-		hv::remove_all_mmrs();
-		});
 
 	system("pause");
 	return 0;
