@@ -631,51 +631,51 @@ void handle_ept_violation(vcpu* const cpu) {
     HV_LOG_ERROR("Failed to find EPT hook. PhysAddr = %p.", physical_address);
 
 	//This needs to be cleaned up -> tracepoints should be do-able with only EPT hooks, not custom logic for removing execute bit from frame
-    HV_LOG_MMR_ACCESS("    PID:  %p", current_guest_pid()); //modification for tracepoint capability -> marking page with noexecute will flow code here
-    HV_LOG_MMR_ACCESS("    CPL:  %i", current_guest_cpl());
-    HV_LOG_MMR_ACCESS("    RIP:  %p", vmx_vmread(VMCS_GUEST_RIP));
-    HV_LOG_MMR_ACCESS("    RSP:  %p", vmx_vmread(VMCS_GUEST_RSP));
-    HV_LOG_MMR_ACCESS("    RAX:  %p", cpu->ctx->rax);
-    HV_LOG_MMR_ACCESS("    RCX:  %p", cpu->ctx->rcx);
-    HV_LOG_MMR_ACCESS("    RDX:  %p", cpu->ctx->rdx);
-    HV_LOG_MMR_ACCESS("    RBX:  %p", cpu->ctx->rbx);
-    HV_LOG_MMR_ACCESS("    RBP:  %p", cpu->ctx->rbp);
-    HV_LOG_MMR_ACCESS("    RSI:  %p", cpu->ctx->rsi);
-    HV_LOG_MMR_ACCESS("    RDI:  %p", cpu->ctx->rdi);
-    HV_LOG_MMR_ACCESS("    R8:   %p", cpu->ctx->r8);
-    HV_LOG_MMR_ACCESS("    R9:   %p", cpu->ctx->r9);
-    HV_LOG_MMR_ACCESS("    R10:  %p", cpu->ctx->r10);
-    HV_LOG_MMR_ACCESS("    R11:  %p", cpu->ctx->r11);
-    HV_LOG_MMR_ACCESS("    R12:  %p", cpu->ctx->r12);
-    HV_LOG_MMR_ACCESS("    R13:  %p", cpu->ctx->r13);
-    HV_LOG_MMR_ACCESS("    R14:  %p", cpu->ctx->r14);
-    HV_LOG_MMR_ACCESS("    R15:  %p", cpu->ctx->r15);
+ //   HV_LOG_MMR_ACCESS("    PID:  %p", current_guest_pid()); //modification for tracepoint capability -> marking page with noexecute will flow code here
+ //   HV_LOG_MMR_ACCESS("    CPL:  %i", current_guest_cpl());
+ //   HV_LOG_MMR_ACCESS("    RIP:  %p", vmx_vmread(VMCS_GUEST_RIP));
+ //   HV_LOG_MMR_ACCESS("    RSP:  %p", vmx_vmread(VMCS_GUEST_RSP));
+ //   HV_LOG_MMR_ACCESS("    RAX:  %p", cpu->ctx->rax);
+ //   HV_LOG_MMR_ACCESS("    RCX:  %p", cpu->ctx->rcx);
+ //   HV_LOG_MMR_ACCESS("    RDX:  %p", cpu->ctx->rdx);
+ //   HV_LOG_MMR_ACCESS("    RBX:  %p", cpu->ctx->rbx);
+ //   HV_LOG_MMR_ACCESS("    RBP:  %p", cpu->ctx->rbp);
+ //   HV_LOG_MMR_ACCESS("    RSI:  %p", cpu->ctx->rsi);
+ //   HV_LOG_MMR_ACCESS("    RDI:  %p", cpu->ctx->rdi);
+ //   HV_LOG_MMR_ACCESS("    R8:   %p", cpu->ctx->r8);
+ //   HV_LOG_MMR_ACCESS("    R9:   %p", cpu->ctx->r9);
+ //   HV_LOG_MMR_ACCESS("    R10:  %p", cpu->ctx->r10);
+ //   HV_LOG_MMR_ACCESS("    R11:  %p", cpu->ctx->r11);
+ //   HV_LOG_MMR_ACCESS("    R12:  %p", cpu->ctx->r12);
+ //   HV_LOG_MMR_ACCESS("    R13:  %p", cpu->ctx->r13);
+ //   HV_LOG_MMR_ACCESS("    R14:  %p", cpu->ctx->r14);
+ //   HV_LOG_MMR_ACCESS("    R15:  %p", cpu->ctx->r15);
 
-	//get cr3 of the current process
-    hv::hypercall_input input_cr3;
-    input_cr3.code = hv::hypercall_query_process_cr3;
-    input_cr3.key = hv::hypercall_key;
-    input_cr3.args[0] = current_guest_pid();
-    uint64_t cr3 =  vmx_vmcall(input_cr3);
-    
-    hv::hypercall_input input;
+	////get cr3 of the current process
+ //   hv::hypercall_input input_cr3;
+ //   input_cr3.code = hv::hypercall_query_process_cr3;
+ //   input_cr3.key = hv::hypercall_key;
+ //   input_cr3.args[0] = current_guest_pid();
+ //   uint64_t cr3 =  vmx_vmcall(input_cr3);
+ //   
+ //   hv::hypercall_input input;
 
-	//get physical address of the faulting instruction
-    input.code = hv::hypercall_get_physical_address;
-    input.key = hv::hypercall_key;
-    input.args[0] = cr3;
-    input.args[1] = vmx_vmread(VMCS_GUEST_RIP);
-    uint64_t phys_addr = vmx_vmcall(input);
+	////get physical address of the faulting instruction
+ //   input.code = hv::hypercall_get_physical_address;
+ //   input.key = hv::hypercall_key;
+ //   input.args[0] = cr3;
+ //   input.args[1] = vmx_vmread(VMCS_GUEST_RIP);
+ //   uint64_t phys_addr = vmx_vmcall(input);
 
-    uint64_t pfn = phys_addr >> 12;
-    auto const pte = get_ept_pte(cpu->ept, phys_addr, true);
-    pte->execute_access = (uint64_t)1; //restore execute access to let the program proceed with its original page
+ //   uint64_t pfn = phys_addr >> 12;
+ //   auto const pte = get_ept_pte(cpu->ept, phys_addr, true);
+ //   pte->execute_access = (uint64_t)1; //restore execute access to let the program proceed with its original page
 
-    vmx_invept(invept_all_context, {});
+ //   vmx_invept(invept_all_context, {});
 
-    skip_instruction();
+ //   skip_instruction();
 
-    //inject_hw_exception(general_protection, 0); //todo: clean this up, make hv aware of requested tracepoints so that we can move the above code to a proper area
+    inject_hw_exception(general_protection, 0); //todo: clean this up, make hv aware of requested tracepoints so that we can move the above code to a proper area
     return;
   }
 
